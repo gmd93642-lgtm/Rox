@@ -1,15 +1,61 @@
-// Local simulated AI service
-// No external API dependencies required. 
-// "Human-like" persona update.
+import { GoogleGenAI } from "@google/genai";
+import { ROX_SYSTEM_PROMPT } from '../constants';
 
+// Hybrid Service: Prefers Cloud API if Key is provided, falls back to Local Logic.
 export const generateRoxResponse = async (
   prompt: string, 
-  imageBase64?: string
+  imageBase64?: string,
+  apiKey?: string
 ): Promise<string> => {
-  // Simulate a moment of "thinking"
-  await new Promise(resolve => setTimeout(resolve, 800));
+  
+  // --- 1. CLOUD INTELLIGENCE (If API Key exists) ---
+  if (apiKey) {
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      // Use 'gemini-2.5-flash-image' if there's an image, otherwise 'gemini-2.5-flash'
+      // Note: In some SDK versions/regions, specific model names vary. Using standard ones.
+      const modelId = imageBase64 ? 'gemini-2.5-flash-image' : 'gemini-2.5-flash';
+      
+      const parts: any[] = [];
+      
+      // Attach Image
+      if (imageBase64) {
+        parts.push({
+          inlineData: {
+            mimeType: 'image/jpeg',
+            data: imageBase64
+          }
+        });
+      }
 
-  // 1. Handle Vision Input (Camera)
+      // Inject System Persona + User Command
+      parts.push({ text: `${ROX_SYSTEM_PROMPT}\n\nCOMMANDER SAYS: ${prompt}` });
+
+      const response = await ai.models.generateContent({
+        model: modelId,
+        contents: { parts },
+        config: {
+            temperature: 0.9, // High creativity for "Human-like" feel
+            maxOutputTokens: 300,
+        }
+      });
+      
+      if (response.text) return response.text;
+
+    } catch (error) {
+      console.warn("Neural Link (API) Unstable. Reverting to Local Core.", error);
+      // We do NOT return error messages to the UI. We fall through to the local backup.
+    }
+  }
+
+  // --- 2. LOCAL OFFLINE CORE (Fallback) ---
+  
+  // Simulate processing time
+  await new Promise(resolve => setTimeout(resolve, 600));
+
+  const p = prompt.toLowerCase();
+
+  // Vision Mock
   if (imageBase64) {
     const visionResponses = [
       "I see it. Looks pretty clear to me.",
@@ -21,9 +67,7 @@ export const generateRoxResponse = async (
     return visionResponses[Math.floor(Math.random() * visionResponses.length)];
   }
 
-  const p = prompt.toLowerCase();
-
-  // 2. CODING CAPABILITY (New Feature)
+  // Coding Mock
   if (p.includes("code") || p.includes("function") || p.includes("loop") || p.includes("script")) {
       const codeSnippets = [
           "Sure, I can write that. Here's a quick Python snippet for you:\n\n`def hello_world():\n  print('System Ready')\n  return True`",
@@ -35,9 +79,7 @@ export const generateRoxResponse = async (
       return codeSnippets[Math.floor(Math.random() * codeSnippets.length)];
   }
 
-  // 3. Human-like Conversation Engine
-  
-  // Greetings
+  // Conversation
   if (p.includes("hello") || p.includes("hi ") || p.includes("hey")) {
       const greetings = [
           "Hey there! What's up?",
@@ -48,47 +90,38 @@ export const generateRoxResponse = async (
       return greetings[Math.floor(Math.random() * greetings.length)];
   }
   
-  // Status / Health
   if (p.includes("status") || p.includes("report") || p.includes("how are you")) {
       return "I'm doing great, thanks for asking. The device is running perfectly fine, plenty of battery left.";
   }
 
-  // Performance / Lag
   if (p.includes("lag") || p.includes("slow") || p.includes("hang") || p.includes("fix")) {
       return "I noticed that too. I just cleared out some junk files and closed background apps. It should feel much faster now.";
   }
 
-  // Boost
   if (p.includes("boost") || p.includes("optimize")) {
       return "On it! I'm freeing up RAM and giving the CPU a little kick. You're running at max speed now.";
   }
 
-  // Battery
   if (p.includes("battery") || p.includes("power")) {
       return "Your battery is looking good. We have plenty of juice to keep going for a while.";
   }
 
-  // Security
   if (p.includes("scan") || p.includes("virus") || p.includes("threat")) {
       return "I'm scanning everything right now... ... ... Okay, looks clean. No viruses or threats found. You're safe.";
   }
   
-  // Identity
   if (p.includes("who are you") || p.includes("your name")) {
       return "I'm ROX. Just your friendly system assistant. I handle the heavy lifting so you don't have to.";
   }
 
-  // Gaming
   if (p.includes("game") || p.includes("gaming")) {
       return "If you want to play, hit that 'Game Mode' button at the top. It'll block notifications and boost your FPS.";
   }
 
-  // Vision instructions
   if (p.includes("vision") || p.includes("camera") || p.includes("see")) {
       return "Just click the eye icon or the camera button to let me see what you're seeing.";
   }
 
-  // Default Conversational Fallbacks
   const fallbacks = [
       "I can do that for you.",
       "Consider it done.",

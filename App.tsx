@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Mic, Lock, ShieldAlert, Zap, Terminal, Eye, Volume2, Gamepad2, AlertCircle } from 'lucide-react';
+import { Mic, Lock, ShieldAlert, Zap, Terminal, Eye, Volume2, Gamepad2, Settings, X, Key, Save } from 'lucide-react';
 import { Message, MessageSender, AppMode, SystemMetrics } from './types';
 import { MOCK_LOGS } from './constants';
 import { generateRoxResponse } from './services/geminiService';
@@ -18,13 +18,25 @@ const App: React.FC = () => {
   const [captureTrigger, setCaptureTrigger] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [isGaming, setIsGaming] = useState(false);
+  
+  // API Key State
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [tempKey, setTempKey] = useState('');
 
   // Audio Refs
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
 
-  // Initial System Boot Animation / Fake Logs
+  // Initial Load (Boot + API Key)
   useEffect(() => {
+    // Load stored key
+    const storedKey = localStorage.getItem('rox_api_key');
+    if (storedKey) {
+        setApiKey(storedKey);
+        setTempKey(storedKey);
+    }
+
     if (permissionGranted) {
         let delay = 0;
         MOCK_LOGS.forEach((log, index) => {
@@ -46,18 +58,15 @@ const App: React.FC = () => {
 
     const interval = setInterval(() => {
       setMetrics(prev => {
-        // Gaming Mode Logic: Higher stable CPU/RAM usage, Higher Temp
         if (isGaming) {
             return {
                 cpu: Math.min(100, Math.max(80, prev.cpu + (Math.random() * 10 - 5))),
                 ram: Math.min(95, Math.max(70, prev.ram + (Math.random() * 5 - 2))),
                 temp: Math.min(95, Math.max(60, prev.temp + (Math.random() * 3 - 1))),
-                network: Math.max(5, 20 + (Math.random() * 10 - 5)), // Stable low ping
-                battery: Math.max(0, prev.battery - 0.05) // Fast drain
+                network: Math.max(5, 20 + (Math.random() * 10 - 5)),
+                battery: Math.max(0, prev.battery - 0.05)
             };
         }
-
-        // Normal Mode Logic
         return {
           cpu: Math.min(100, Math.max(5, prev.cpu + (Math.random() * 20 - 10))),
           ram: Math.min(100, Math.max(10, prev.ram + (Math.random() * 10 - 5))),
@@ -66,11 +75,7 @@ const App: React.FC = () => {
           battery: Math.max(0, prev.battery - 0.01)
         };
       });
-      
-      setHistory(h => {
-          const newHistory = [...h, metrics]; 
-          return newHistory.slice(-20);
-      });
+      setHistory(h => [...h, metrics].slice(-20));
     }, 2000);
     return () => clearInterval(interval);
   }, [mode, isGaming]); 
@@ -88,20 +93,17 @@ const App: React.FC = () => {
     if (synthRef.current) {
       synthRef.current.cancel();
 
-      // Filter out code snippets from being spoken if they are too long
       let spokenText = text;
       if (text.includes("`")) {
           spokenText = text.split("`")[0] + " I've printed the code to your console.";
       }
 
       const utterance = new SpeechSynthesisUtterance(spokenText);
-      // Human-like settings (Normal speed, Normal pitch)
       utterance.rate = 1.0; 
       utterance.pitch = 1.0; 
       utterance.volume = 1;
       
       const voices = synthRef.current.getVoices();
-      // Try to find a high quality natural voice
       const preferredVoice = voices.find(v => 
         v.name.includes("Google US English") || 
         v.name.includes("Microsoft Zira") ||
@@ -118,6 +120,23 @@ const App: React.FC = () => {
       
       synthRef.current.speak(utterance);
     }
+  };
+
+  const saveApiKey = () => {
+      localStorage.setItem('rox_api_key', tempKey);
+      setApiKey(tempKey);
+      setShowSettings(false);
+      addLog("NEURAL LINK ESTABLISHED. API KEY SAVED.", MessageSender.SYSTEM);
+      speak("Key saved. Connected to cloud intelligence.");
+  };
+
+  const clearApiKey = () => {
+      localStorage.removeItem('rox_api_key');
+      setApiKey('');
+      setTempKey('');
+      setShowSettings(false);
+      addLog("NEURAL LINK SEVERED. REVERTING TO LOCAL.", MessageSender.SYSTEM);
+      speak("Key removed. Running on local core.");
   };
 
   const toggleGamingMode = () => {
@@ -139,7 +158,6 @@ const App: React.FC = () => {
     
     const lower = text.toLowerCase();
     
-    // Manual Triggers
     if (lower.includes('vision') || lower.includes('camera') || lower.includes('see')) {
        setMode(AppMode.VISION);
        speak("Vision activated. Show me what you're looking at.");
@@ -159,8 +177,8 @@ const App: React.FC = () => {
 
     addLog(text, MessageSender.USER);
 
-    // Simulated AI Call
-    const response = await generateRoxResponse(text, imageBase64);
+    // AI Call - Passing the apiKey if it exists
+    const response = await generateRoxResponse(text, imageBase64, apiKey);
     
     addLog(response, MessageSender.SYSTEM);
     speak(response);
@@ -171,7 +189,6 @@ const App: React.FC = () => {
   };
 
   const startListening = () => {
-    // If in vision mode, clicking mic triggers image capture
     if (mode === AppMode.VISION) {
       setCaptureTrigger(true);
       return;
@@ -217,8 +234,6 @@ const App: React.FC = () => {
     setMode(AppMode.IDLE);
   };
 
-  // --- RENDERING ---
-
   if (!permissionGranted) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
@@ -255,6 +270,54 @@ const App: React.FC = () => {
       {/* Gaming Overlay */}
       {isGaming && <GamingOverlay />}
 
+      {/* API Key Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+           <div className="w-full max-w-md bg-slate-900 border border-cyan-500/50 rounded-lg p-6 shadow-[0_0_50px_rgba(6,182,212,0.3)]">
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-2 text-cyan-400">
+                    <Key size={20} />
+                    <span className="font-header font-bold tracking-wider">NEURAL LINK CONFIG</span>
+                </div>
+                <button onClick={() => setShowSettings(false)} className="text-cyan-700 hover:text-cyan-400">
+                    <X size={24} />
+                </button>
+              </div>
+              
+              <div className="mb-6">
+                 <label className="block text-cyan-200/50 text-xs font-mono mb-2 uppercase tracking-widest">Enter Gemini API Key</label>
+                 <input 
+                   type="password" 
+                   value={tempKey}
+                   onChange={(e) => setTempKey(e.target.value)}
+                   className="w-full bg-black/50 border border-cyan-800 rounded p-3 text-cyan-100 font-mono outline-none focus:border-cyan-400 transition-colors"
+                   placeholder="AIzaSy..."
+                 />
+                 <p className="text-[10px] text-cyan-200/30 mt-2">
+                    Add a key to enable advanced cloud intelligence. Leave empty to use local core.
+                 </p>
+              </div>
+
+              <div className="flex gap-3">
+                 <button 
+                   onClick={saveApiKey}
+                   className="flex-1 bg-cyan-700 hover:bg-cyan-600 text-white font-bold py-3 px-4 rounded flex items-center justify-center gap-2 transition-colors"
+                 >
+                    <Save size={16} /> SAVE LINK
+                 </button>
+                 {apiKey && (
+                     <button 
+                        onClick={clearApiKey}
+                        className="px-4 py-3 bg-red-900/30 border border-red-800 text-red-400 rounded hover:bg-red-900/50 transition-colors"
+                     >
+                        CLEAR
+                     </button>
+                 )}
+              </div>
+           </div>
+        </div>
+      )}
+
       {/* Top Header */}
       <header className={`w-full p-4 flex justify-between items-center border-b backdrop-blur-md z-10 transition-colors duration-500 ${isGaming ? 'bg-red-900/10 border-red-900/30' : 'bg-black/40 border-cyan-900/30'}`}>
         <div className="flex items-center gap-2">
@@ -263,19 +326,21 @@ const App: React.FC = () => {
         </div>
         
         {/* Header Controls */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4">
              <button 
                 onClick={toggleGamingMode}
                 className={`flex items-center gap-2 px-3 py-1 rounded border text-xs font-bold font-mono transition-all ${isGaming ? 'bg-red-600 border-red-500 text-white shadow-[0_0_15px_rgba(220,38,38,0.5)]' : 'bg-transparent border-cyan-800 text-cyan-500 hover:bg-cyan-900/20'}`}
              >
                 <Gamepad2 size={14} />
-                {isGaming ? 'GAME MODE' : 'GAME MODE'}
+                <span className="hidden md:inline">{isGaming ? 'GAME MODE' : 'GAME MODE'}</span>
              </button>
-             
-             <div className="hidden md:flex items-center gap-4 text-xs font-mono text-cyan-600">
-                <span className="flex items-center gap-1"><Zap size={12} /> BOOST: ON</span>
-                <span className="flex items-center gap-1"><Volume2 size={12} /> VOL: 100%</span>
-             </div>
+
+             <button 
+                onClick={() => setShowSettings(true)}
+                className={`p-2 rounded border transition-all ${isGaming ? 'border-red-800 text-red-400 hover:bg-red-900/20' : 'border-cyan-800 text-cyan-500 hover:bg-cyan-900/20'}`}
+             >
+                 <Settings size={16} />
+             </button>
         </div>
       </header>
 
