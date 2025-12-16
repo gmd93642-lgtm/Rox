@@ -1,0 +1,8 @@
+{
+  "name": "ROX - System AI Core",
+  "description": "A futuristic, Iron Man-style AI system interface. Simulates an advanced Android assistant with voice control, vision capabilities, and real-time system monitoring. Features a dominant, Hinglish-speaking persona.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
